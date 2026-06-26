@@ -1,0 +1,15 @@
+name: Release (ScalarDB Cluster)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Release ScalarDB Cluster chart ${{ inputs.version }}"
+

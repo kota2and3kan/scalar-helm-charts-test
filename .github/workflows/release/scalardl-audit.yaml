@@ -1,0 +1,14 @@
+name: Release (ScalarDL Auditor)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Release ScalarDL Auditor chart ${{ inputs.version }}"

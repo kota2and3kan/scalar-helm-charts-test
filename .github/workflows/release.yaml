@@ -1,0 +1,60 @@
+name: Release Charts
+
+on:
+  push:
+    tags:
+      - '*-[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+jobs:
+  parse-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      chart: ${{ steps.parse.outputs.chart }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION=$(echo "$TAG" | grep -oP '\d+\.\d+\.\d+$')
+          CHART=$(echo "$TAG" | sed "s/-${VERSION}$//")
+
+          VALID_CHARTS=("scalardb-cluster" "scalardl" "scalardl-audit")
+
+          VALID=false
+          for c in "${VALID_CHARTS[@]}"; do
+            if [[ "$CHART" == "$c" ]]; then
+              VALID=true
+              break
+            fi
+          done
+
+          if [[ "$VALID" == "false" ]]; then
+            echo "Error: unknown chart name '$CHART'" >&2
+            exit 1
+          fi
+
+          echo "chart=$CHART" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  release-scalardb-cluster:
+    needs: parse-tag
+    if: ${{ needs.parse-tag.outputs.chart == 'scalardb-cluster' }}
+    uses: ./.github/workflows/release/scalardb-cluster.yaml
+    with:
+      version: ${{ needs.parse-tag.outputs.version }}
+
+  release-scalardl:
+    needs: parse-tag
+    if: ${{ needs.parse-tag.outputs.chart == 'scalardl' }}
+    uses: ./.github/workflows/release/scalardl.yaml
+    with:
+      version: ${{ needs.parse-tag.outputs.version }}
+
+  release-scalardl-audit:
+    needs: parse-tag
+    if: ${{ needs.parse-tag.outputs.chart == 'scalardl-audit' }}
+    uses: ./.github/workflows/release/scalardl-audit.yaml
+    with:
+      version: ${{ needs.parse-tag.outputs.version }}

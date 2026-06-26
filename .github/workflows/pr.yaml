@@ -1,0 +1,64 @@
+name: Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-title:
+    name: Check Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2
+
+      - name: Run chart-testing (list-changed)
+        id: list-changed
+        run: |
+          changed="$(ct list-changed --config .github/ct.yaml)"
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "changed_list=\"${changed//$'\n'/ }\"" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate PR Title format
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          CHANGED_LIST="${CHANGED_LIST//\"/}"
+
+          # Derive chart name from the changed path and validate it.
+          if [[ "$CHANGED_LIST" == */* ]]; then
+            CHART_NAME="${CHANGED_LIST##*/}"
+          else
+            echo "Error: Unexpected chart identifier '$CHANGED_LIST'. Expected a path containing '/'." >&2
+            exit 1
+          fi
+
+          if [[ -z "$CHART_NAME" ]]; then
+            echo "Error: Derived chart name is empty. Original value: '$CHANGED_LIST'." >&2
+            exit 1
+          fi
+
+          # Optional sanity check: ensure chart name contains only expected characters.
+          if ! [[ "$CHART_NAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "Error: Derived chart name '$CHART_NAME' contains unexpected characters." >&2
+            exit 1
+          fi
+
+          if [[ "$PR_TITLE" != "[${CHART_NAME}] "* ]]; then
+            echo "PR title must start with '[${CHART_NAME}] '." >&2
+            exit 1
+          fi
+        env:
+          CHANGED_LIST: ${{ steps.list-changed.outputs.changed_list }}
+          PR_TITLE: ${{ github.event.pull_request.title }}

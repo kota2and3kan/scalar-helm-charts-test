@@ -1,0 +1,14 @@
+name: Release (ScalarDL Ledger)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Release ScalarDL Ledger chart ${{ inputs.version }}"
