@@ -1,0 +1,3 @@
+# Values diff for Google Cloud Marketplace.
+# This file contains only the differences from the base values.yaml for the Google Cloud Marketplace environment.
+# These values take precedence over the base values.yaml when merged at release time.

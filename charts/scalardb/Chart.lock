@@ -1,6 +1,0 @@
-dependencies:
-- name: envoy
-  repository: file://../envoy/
-  version: 3.0.0-SNAPSHOT
-digest: sha256:7f522dc715c13c57b8c9d9fc494ce5928a76a44839c26a9d62d8728927e6547e
-generated: "2023-05-15T14:07:41.699260149+09:00"

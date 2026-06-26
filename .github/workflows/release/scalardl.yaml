@@ -8,7 +8,81 @@ on:
         type: string
 
 jobs:
-  test:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - run: echo "Release ScalarDL Ledger chart ${{ inputs.version }}"
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Build chart dependencies
+        run: helm dependency build charts/scalardl
+
+      - name: Package standard chart
+        run: |
+          helm package charts/scalardl \
+            --version "${{ inputs.version }}" \
+            --destination .
+
+      - name: Package Red Hat variant
+        run: |
+          cp -r charts/scalardl /tmp/scalardl-red-hat
+
+          yq -n 'load("./charts/scalardl/values.yaml") * load("./charts/scalardl/variants/red-hat/values-diff.yaml")' \
+            > /tmp/scalardl-red-hat/values.yaml
+
+          helm package /tmp/scalardl-red-hat \
+            --version "${{ inputs.version }}" \
+            --destination /tmp/red-hat
+
+      - name: Create GitHub Release and upload artifacts
+        run: |
+          gh release create "scalardl-${{ inputs.version }}" \
+            --title "scalardl-${{ inputs.version }}" \
+            "./scalardl-${{ inputs.version }}.tgz" \
+            "/tmp/red-hat/scalardl-${{ inputs.version }}.tgz#scalardl-red-hat-${{ inputs.version }}.tgz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update index.yaml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git checkout gh-pages
+
+          mkdir -p /tmp/helm-index
+          cp "./scalardl-${{ inputs.version }}.tgz" /tmp/helm-index/
+          helm repo index --merge ./index.yaml \
+            --url "https://github.com/${{ github.repository }}/releases/download/scalardl-${{ inputs.version }}" \
+            /tmp/helm-index/
+          cp /tmp/helm-index/index.yaml ./index.yaml
+
+          git add index.yaml
+          git commit -m "Update index.yaml for scalardl-${{ inputs.version }}"
+          git push origin gh-pages
+
+      - name: TODO - Run Red Hat Ecosystem Catalog verifier tool
+        run: |
+          echo "TODO: Run Red Hat Ecosystem Catalog verifier tool on Minikube to generate report.yaml"
+
+      - name: TODO - Create PR to Red Hat repository
+        run: |
+          echo "TODO: Create PR to openshift-helm-charts repository with report.yaml and scalardl-red-hat-${{ inputs.version }}.tgz"
+
+      - name: TODO - Release Google Marketplace
+        run: |
+          echo "TODO: Release Google Marketplace"
+
+      - name: TODO - Release Azure Marketplace
+        run: |
+          echo "TODO: Release Azure Marketplace"

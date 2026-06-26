@@ -14,11 +14,6 @@ keywords:
 home: https://scalar-labs.com/
 sources:
   - https://github.com/scalar-labs/scalardl
-dependencies:
-- name: envoy
-  version: ~3.0.0-SNAPSHOT
-  repository: file://../envoy/
-  condition: envoy.enabled
 maintainers:
   - name: Takanori Yokoyama
     email: takanori.yokoyama@scalar-labs.com

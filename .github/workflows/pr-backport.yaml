@@ -1,0 +1,81 @@
+name: Backport PR
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.extract.outputs.targets }}
+    steps:
+      - name: Extract backport target branches
+        id: extract
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          targets=$(echo "${LABELS}" | jq '[.[] | select(startswith("backport:")) | ltrimstr("backport:")]')
+          echo "targets=${targets}" >> $GITHUB_OUTPUT
+
+  backport:
+    needs: prepare
+    if: needs.prepare.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create backport PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ matrix.target }}
+          MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${TARGET}"
+
+          git checkout "${TARGET}"
+          git checkout -b "${BACKPORT_BRANCH}"
+
+          if ! git cherry-pick "${MERGE_COMMIT}"; then
+            git cherry-pick --abort
+            gh pr comment "${PR_NUMBER}" \
+              --body "❌ Backport to \`${TARGET}\` failed due to a conflict. Manual resolution is required.
+
+          \`\`\`console
+          git checkout ${TARGET}
+          git checkout -b ${BACKPORT_BRANCH}
+          git cherry-pick ${MERGE_COMMIT}
+          # After resolving conflicts:
+          git cherry-pick --continue
+          git push origin ${BACKPORT_BRANCH}
+          gh pr create --base ${TARGET} --head ${BACKPORT_BRANCH}
+          \`\`\`"
+            exit 0
+          fi
+
+          git push origin "${BACKPORT_BRANCH}"
+
+          gh pr create \
+            --base  "${TARGET}" \
+            --head  "${BACKPORT_BRANCH}" \
+            --title "backport: ${PR_TITLE} (to ${TARGET})" \
+            --body  "Backport of #${PR_NUMBER} to \`${TARGET}\`."

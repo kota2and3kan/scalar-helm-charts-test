@@ -8,8 +8,81 @@ on:
         type: string
 
 jobs:
-  test:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - run: echo "Release ScalarDB Cluster chart ${{ inputs.version }}"
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Build chart dependencies
+        run: helm dependency build charts/scalardb-cluster
+
+      - name: Package standard chart
+        run: |
+          helm package charts/scalardb-cluster \
+            --version "${{ inputs.version }}" \
+            --destination .
+
+      - name: Package Red Hat variant
+        run: |
+          cp -r charts/scalardb-cluster /tmp/scalardb-cluster-red-hat
+
+          yq -n 'load("./charts/scalardb-cluster/values.yaml") * load("./charts/scalardb-cluster/variants/red-hat/values-diff.yaml")' \
+            > /tmp/scalardb-cluster-red-hat/values.yaml
+
+          helm package /tmp/scalardb-cluster-red-hat \
+            --version "${{ inputs.version }}" \
+            --destination /tmp/red-hat
+
+      - name: Create GitHub Release and upload artifacts
+        run: |
+          gh release create "scalardb-cluster-${{ inputs.version }}" \
+            --title "scalardb-cluster-${{ inputs.version }}" \
+            "./scalardb-cluster-${{ inputs.version }}.tgz" \
+            "/tmp/red-hat/scalardb-cluster-${{ inputs.version }}.tgz#scalardb-cluster-red-hat-${{ inputs.version }}.tgz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update index.yaml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git checkout gh-pages
+
+          mkdir -p /tmp/helm-index
+          cp "./scalardb-cluster-${{ inputs.version }}.tgz" /tmp/helm-index/
+          helm repo index --merge ./index.yaml \
+            --url "https://github.com/${{ github.repository }}/releases/download/scalardb-cluster-${{ inputs.version }}" \
+            /tmp/helm-index/
+          cp /tmp/helm-index/index.yaml ./index.yaml
+
+          git add index.yaml
+          git commit -m "Update index.yaml for scalardb-cluster-${{ inputs.version }}"
+          git push origin gh-pages
+
+      - name: TODO - Run Red Hat Ecosystem Catalog verifier tool
+        run: |
+          echo "TODO: Run Red Hat Ecosystem Catalog verifier tool on Minikube to generate report.yaml"
+
+      - name: TODO - Create PR to Red Hat repository
+        run: |
+          echo "TODO: Create PR to openshift-helm-charts repository with report.yaml and scalardb-cluster-red-hat-${{ inputs.version }}.tgz"
+
+      - name: TODO - Release Google Marketplace
+        run: |
+          echo "TODO: Release Google Marketplace"
+
+      - name: TODO - Release Azure Marketplace
+        run: |
+          echo "TODO: Release Azure Marketplace"

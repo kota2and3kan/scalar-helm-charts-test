@@ -1,0 +1,10 @@
+# Values diff for Red Hat OpenShift.
+# This file contains only the differences from the base values.yaml for the Red Hat OpenShift environment.
+# These values take precedence over the base values.yaml when merged at release time.
+
+global:
+  platform: "openshift"
+
+scalardbCluster:
+  image:
+    repository: "registry.connect.redhat.com/scalar-labs/scalardb-cluster-node-ubi-byol-premium"
