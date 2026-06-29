@@ -41,20 +41,20 @@ jobs:
   release-scalardb-cluster:
     needs: parse-tag
     if: ${{ needs.parse-tag.outputs.chart == 'scalardb-cluster' }}
-    uses: ./.github/workflows/release/scalardb-cluster.yaml
+    uses: ./.github/workflows/release-scalardb-cluster.yaml
     with:
       version: ${{ needs.parse-tag.outputs.version }}
 
   release-scalardl:
     needs: parse-tag
     if: ${{ needs.parse-tag.outputs.chart == 'scalardl' }}
-    uses: ./.github/workflows/release/scalardl.yaml
+    uses: ./.github/workflows/release-scalardl.yaml
     with:
       version: ${{ needs.parse-tag.outputs.version }}
 
   release-scalardl-audit:
     needs: parse-tag
     if: ${{ needs.parse-tag.outputs.chart == 'scalardl-audit' }}
-    uses: ./.github/workflows/release/scalardl-audit.yaml
+    uses: ./.github/workflows/release-scalardl-audit.yaml
     with:
       version: ${{ needs.parse-tag.outputs.version }}

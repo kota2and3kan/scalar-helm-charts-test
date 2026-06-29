@@ -43,14 +43,14 @@ jobs:
   scalardb-cluster-test:
     needs: common-test
     if: ${{ needs.check-chart.outputs.chart_name == 'charts/scalardb-cluster' }}
-    uses: ./.github/workflows/ci/scalardb-cluster.yaml
+    uses: ./.github/workflows/ci-scalardb-cluster.yaml
 
   scalardl-test:
     needs: common-test
     if: ${{ needs.check-chart.outputs.chart_name == 'charts/scalardl' }}
-    uses: ./.github/workflows/ci/scalardl.yaml
+    uses: ./.github/workflows/ci-scalardl.yaml
 
   scalardl-audit-test:
     needs: common-test
     if: ${{ needs.check-chart.outputs.chart_name == 'charts/scalardl-audit' }}
-    uses: ./.github/workflows/ci/scalardl-audit.yaml
+    uses: ./.github/workflows/ci-scalardl-audit.yaml
