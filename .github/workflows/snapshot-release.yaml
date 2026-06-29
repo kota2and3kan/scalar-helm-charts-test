@@ -32,7 +32,7 @@ jobs:
           echo "CHART=$(git show --name-only --format='' HEAD | grep '^charts/' | cut -d'/' -f2 | sort -u | tr -d '\n')" >> "$GITHUB_ENV"
 
       - name: Build chart dependencies
-        run: helm dependency build "charts/$CHART"
+        run: helm dependency update "charts/$CHART"
 
       - name: Package chart
         run: helm package "charts/$CHART"
