@@ -18,7 +18,7 @@ spec:
   template:
     metadata:
       annotations:
-        foo: bar
+        foo: baz
         checksum/config: {{ include (print $.Template.BasePath "/scalardb-cluster/configmap.yaml") . | sha256sum }}
         {{- if .Values.scalardbCluster.podAnnotations }}
         {{- toYaml .Values.scalardbCluster.podAnnotations | nindent 8 }}
