@@ -23,7 +23,7 @@ jobs:
         env:
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
-          targets=$(echo "${LABELS}" | jq '[.[] | select(startswith("backport:")) | ltrimstr("backport:")]')
+          targets=$(echo "${LABELS}" | jq -c '[.[] | select(startswith("backport:")) | ltrimstr("backport:")]')
           echo "targets=${targets}" >> $GITHUB_OUTPUT
 
   backport:
