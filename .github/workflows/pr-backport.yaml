@@ -46,36 +46,65 @@ jobs:
           MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
+          set -e -o pipefail
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${TARGET}"
 
+          git fetch origin
           git checkout "${TARGET}"
           git checkout -b "${BACKPORT_BRANCH}"
 
-          if ! git cherry-pick "${MERGE_COMMIT}"; then
+          function get_success_body() {
+            body=$(cat <<-END
+            This is an automated backport of the following:
+            - **Original PR:** ${PR_URL}
+            - **Backported commit:** ${MERGE_COMMIT}
+
+            Please merge this PR after all checks have passed.
+            END
+            )
+            echo "${body}"
+          }
+
+          function get_conflict_body() {
+            body=$(cat <<-END
+            This is an automated request for a manual backport of the following:
+            - **Original PR:** ${PR_URL}
+            - **Commit to backport:** ${MERGE_COMMIT}
+
+            1. Resolve any conflicts that occur during the cherry-picking process.
+            \`\`\`console
+            git fetch origin
+            git checkout ${BACKPORT_BRANCH}
+            git cherry-pick ${MERGE_COMMIT}
+            \`\`\`
+            2. Push the changes.
+            3. Merge this PR after all checks have passed.
+            END
+            )
+            echo "${body}"
+          }
+
+          if git cherry-pick "${MERGE_COMMIT}"; then
+            git push origin "${BACKPORT_BRANCH}"
+            gh pr create \
+              --base  "${TARGET}" \
+              --head  "${BACKPORT_BRANCH}" \
+              --title "backport: ${PR_TITLE} (to ${TARGET})" \
+              --body  "$(get_success_body)"
+          else
             git cherry-pick --abort
-            gh pr comment "${PR_NUMBER}" \
-              --body "❌ Backport to \`${TARGET}\` failed due to a conflict. Manual resolution is required.
-
-          \`\`\`console
-          git checkout ${TARGET}
-          git checkout -b ${BACKPORT_BRANCH}
-          git cherry-pick ${MERGE_COMMIT}
-          # After resolving conflicts:
-          git cherry-pick --continue
-          git push origin ${BACKPORT_BRANCH}
-          gh pr create --base ${TARGET} --head ${BACKPORT_BRANCH}
-          \`\`\`"
-            exit 0
+            git commit --allow-empty -m "Empty commit [skip ci]"
+            git push origin "${BACKPORT_BRANCH}"
+            gh pr create \
+              --base  "${TARGET}" \
+              --head  "${BACKPORT_BRANCH}" \
+              --title "backport: ${PR_TITLE} (to ${TARGET})" \
+              --body  "$(get_conflict_body)" \
+              --draft
           fi
-
-          git push origin "${BACKPORT_BRANCH}"
-
-          gh pr create \
-            --base  "${TARGET}" \
-            --head  "${BACKPORT_BRANCH}" \
-            --title "backport: ${PR_TITLE} (to ${TARGET})" \
-            --body  "Backport of #${PR_NUMBER} to \`${TARGET}\`."
