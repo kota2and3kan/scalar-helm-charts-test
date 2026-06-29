@@ -18,6 +18,7 @@ spec:
   template:
     metadata:
       annotations:
+        foo: bar
         checksum/config: {{ include (print $.Template.BasePath "/ledger/configmap.yaml") . | sha256sum }}
         {{- if .Values.ledger.podAnnotations }}
         {{- toYaml .Values.ledger.podAnnotations | nindent 8 }}
