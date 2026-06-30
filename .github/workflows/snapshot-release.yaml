@@ -1,0 +1,55 @@
+name: Snapshot Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+
+jobs:
+  snapshot-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Detect changed chart
+        run: |
+          echo "=== git show output ==="
+          git show --name-only --format='' HEAD
+          echo "=== end ==="
+          echo "=== git diff-tree output ==="
+          git diff-tree --no-commit-id -r --name-only HEAD
+          echo "=== end ==="
+          echo "CHART=$(git show --name-only --format='' HEAD | grep '^charts/' | cut -d'/' -f2 | sort -u | tr -d '\n')" >> "$GITHUB_ENV"
+
+      - name: Build chart dependencies
+        run: helm dependency update "charts/$CHART"
+
+      - name: Package chart
+        run: helm package "charts/$CHART"
+
+      - name: Release snapshot
+        run: |
+          artifact=$(ls "$CHART"-*.tgz)
+          tag="${artifact%.tgz}"
+
+          if gh release view "$tag" &>/dev/null; then
+            gh release delete "$tag" --cleanup-tag --yes
+          fi
+
+          if git rev-parse "$tag" &>/dev/null; then
+            git tag -d "$tag"
+          fi
+
+          gh release create "$tag" --prerelease "$artifact"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
