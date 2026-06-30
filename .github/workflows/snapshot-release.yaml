@@ -41,10 +41,15 @@ jobs:
         run: |
           artifact=$(ls "$CHART"-*.tgz)
           tag="${artifact%.tgz}"
+
           if gh release view "$tag" &>/dev/null; then
-            gh release upload "$tag" "$artifact" --clobber
-          else
-            gh release create "$tag" --prerelease "$artifact"
+            gh release delete "$tag" --cleanup-tag --yes
           fi
+
+          if git rev-parse "$tag" &>/dev/null; then
+            git tag -d "$tag"
+          fi
+
+          gh release create "$tag" --prerelease "$artifact"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
