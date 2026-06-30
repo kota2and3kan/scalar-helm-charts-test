@@ -16,7 +16,7 @@ jobs:
       chart_name: ${{ steps.list-changed.outputs.chart_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

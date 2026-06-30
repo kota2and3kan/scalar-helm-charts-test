@@ -6,6 +6,11 @@ on:
       version:
         required: true
         type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
 
 jobs:
   release:
@@ -16,6 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: "scalardb-cluster-${{ inputs.version }}"
           fetch-depth: 0
 
       - name: Set up Helm
@@ -33,23 +39,30 @@ jobs:
             --version "${{ inputs.version }}" \
             --destination .
 
-      - name: Package Red Hat variant
+      - name: Check if GitHub Release already exists
+        id: check-release
         run: |
-          cp -r charts/scalardb-cluster /tmp/scalardb-cluster-red-hat
+          if gh release view "scalardb-cluster-${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          yq -n 'load("./charts/scalardb-cluster/values.yaml") * load("./charts/scalardb-cluster/variants/red-hat/values-diff.yaml")' \
-            > /tmp/scalardb-cluster-red-hat/values.yaml
-
-          helm package /tmp/scalardb-cluster-red-hat \
-            --version "${{ inputs.version }}" \
-            --destination /tmp/red-hat
-
-      - name: Create GitHub Release and upload artifacts
+      - name: Create GitHub Release
+        if: steps.check-release.outputs.exists == 'false'
         run: |
           gh release create "scalardb-cluster-${{ inputs.version }}" \
-            --title "scalardb-cluster-${{ inputs.version }}" \
+            --title "scalardb-cluster-${{ inputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload chart artifact to Release
+        run: |
+          gh release upload "scalardb-cluster-${{ inputs.version }}" \
             "./scalardb-cluster-${{ inputs.version }}.tgz" \
-            "/tmp/red-hat/scalardb-cluster-${{ inputs.version }}.tgz#scalardb-cluster-red-hat-${{ inputs.version }}.tgz"
+            --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -67,9 +80,15 @@ jobs:
             /tmp/helm-index/
           cp /tmp/helm-index/index.yaml ./index.yaml
 
+      - name: Commit and push index.yaml
+        run: |
           git add index.yaml
-          git commit -m "Update index.yaml for scalardb-cluster-${{ inputs.version }}"
-          git push origin gh-pages
+          if git diff --cached --quiet; then
+            echo "No changes to index.yaml. Skipping commit."
+          else
+            git commit -m "Update index.yaml for scalardb-cluster-${{ inputs.version }}"
+            git push origin gh-pages
+          fi
 
       - name: TODO - Run Red Hat Ecosystem Catalog verifier tool
         run: |
