@@ -1,0 +1,107 @@
+name: Backport PR
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.extract.outputs.targets }}
+    steps:
+      - name: Extract backport target branches
+        id: extract
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          targets=$(echo "${LABELS}" | jq -c '[.[] | select(startswith("backport:")) | ltrimstr("backport:")]')
+          echo "targets=${targets}" >> $GITHUB_OUTPUT
+
+  backport:
+    needs: prepare
+    if: needs.prepare.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create backport PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ matrix.target }}
+          MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_ASSIGNEES: ${{ join(github.event.pull_request.assignees.*.login, ',') }}
+        run: |
+          set -e -o pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${TARGET}"
+
+          ASSIGNEE_FLAGS=()
+          if [ -n "${PR_ASSIGNEES}" ]; then
+            IFS=',' read -ra ASSIGNEES <<< "${PR_ASSIGNEES}"
+            for a in "${ASSIGNEES[@]}"; do
+              ASSIGNEE_FLAGS+=(--assignee "${a}")
+            done
+          fi
+
+          git fetch origin
+          git checkout "${TARGET}"
+          git checkout -b "${BACKPORT_BRANCH}"
+
+          if git cherry-pick "${MERGE_COMMIT}"; then
+            git push origin "${BACKPORT_BRANCH}"
+            SUCCESS_BODY="This is an automated backport of the following:
+          - **Original PR:** ${PR_URL}
+          - **Backported commit:** ${MERGE_COMMIT}
+
+          Please merge this PR after all checks have passed."
+            gh pr create \
+              --base  "${TARGET}" \
+              --head  "${BACKPORT_BRANCH}" \
+              --title "backport: ${PR_TITLE} (to ${TARGET})" \
+              --body  "${SUCCESS_BODY}" \
+              "${ASSIGNEE_FLAGS[@]}"
+          else
+            git cherry-pick --abort
+            git commit --allow-empty -m "Empty commit [skip ci]"
+            git push origin "${BACKPORT_BRANCH}"
+            CONFLICT_BODY="This is an automated request for a manual backport of the following:
+          - **Original PR:** ${PR_URL}
+          - **Commit to backport:** ${MERGE_COMMIT}
+
+          1. Resolve any conflicts that occur during the cherry-picking process.
+          \`\`\`console
+          git fetch origin
+          git checkout ${BACKPORT_BRANCH}
+          git cherry-pick ${MERGE_COMMIT}
+          \`\`\`
+          2. Push the changes.
+          3. Merge this PR after all checks have passed."
+            gh pr create \
+              --base  "${TARGET}" \
+              --head  "${BACKPORT_BRANCH}" \
+              --title "backport: ${PR_TITLE} (to ${TARGET})" \
+              --body  "${CONFLICT_BODY}" \
+              --draft \
+              "${ASSIGNEE_FLAGS[@]}"
+          fi

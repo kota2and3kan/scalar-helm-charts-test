@@ -1,0 +1,10 @@
+name: CI (ScalarDL Ledger)
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Running tests for ScalarDL Ledger chart"
