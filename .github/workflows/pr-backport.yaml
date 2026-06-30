@@ -47,6 +47,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_ASSIGNEES: ${{ join(github.event.pull_request.assignees.*.login, ',') }}
         run: |
           set -e -o pipefail
 
@@ -54,6 +55,14 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${TARGET}"
+
+          ASSIGNEE_FLAGS=()
+          if [ -n "${PR_ASSIGNEES}" ]; then
+            IFS=',' read -ra ASSIGNEES <<< "${PR_ASSIGNEES}"
+            for a in "${ASSIGNEES[@]}"; do
+              ASSIGNEE_FLAGS+=(--assignee "${a}")
+            done
+          fi
 
           git fetch origin
           git checkout "${TARGET}"
@@ -70,7 +79,8 @@ jobs:
               --base  "${TARGET}" \
               --head  "${BACKPORT_BRANCH}" \
               --title "backport: ${PR_TITLE} (to ${TARGET})" \
-              --body  "${SUCCESS_BODY}"
+              --body  "${SUCCESS_BODY}" \
+              "${ASSIGNEE_FLAGS[@]}"
           else
             git cherry-pick --abort
             git commit --allow-empty -m "Empty commit [skip ci]"
@@ -92,5 +102,6 @@ jobs:
               --head  "${BACKPORT_BRANCH}" \
               --title "backport: ${PR_TITLE} (to ${TARGET})" \
               --body  "${CONFLICT_BODY}" \
-              --draft
+              --draft \
+              "${ASSIGNEE_FLAGS[@]}"
           fi
