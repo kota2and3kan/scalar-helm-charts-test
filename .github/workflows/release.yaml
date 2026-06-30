@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - "scalardb-cluster-*"
+      - "scalardl-*"
+      - "scalardl-audit-*"
+    paths:
+      - "charts/scalardb-cluster/Chart.yaml"
+      - "charts/scalardl/Chart.yaml"
+      - "charts/scalardl-audit/Chart.yaml"
+
+jobs:
+  check-chart:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      chart_name: ${{ steps.list-changed.outputs.chart_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2
+
+      - name: Check if only one chart changed
+        id: list-changed
+        run: |
+          changed="$(ct list-changed --config .github/ci/common/ct.yaml --target-branch "${{ github.event.pull_request.base.ref }}")"
+          if [[ -n "$changed" ]]; then
+            num_changed="$(printf '%s\n' "$changed" | wc -l | tr -d ' ')"
+            if [ "$num_changed" -gt 1 ]; then
+              echo "More than one chart changed (count=$num_changed). Failing."
+              printf '%s\n' "$changed"
+              exit 1
+            fi
+            echo "Only one chart changed (count=$num_changed). Proceeding."
+            echo "chart_name=${changed//$'\n'/ }" >> "$GITHUB_OUTPUT"
+          fi
+
+  check-version-bump:
+    needs: check-chart
+    if: needs.check-chart.outputs.chart_name != ''
+    runs-on: ubuntu-latest
+    outputs:
+      bumped: ${{ steps.compare.outputs.bumped }}
+      chart: ${{ steps.compare.outputs.chart }}
+      version: ${{ steps.compare.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+      - uses: mikefarah/yq@v4
+      - name: Compare version before/after merge
+        id: compare
+        run: |
+          chart_dir="${{ needs.check-chart.outputs.chart_name }}"
+          chart="$(basename "$chart_dir")"
+          file="$chart_dir/Chart.yaml"
+
+          old_version="$(git show "${{ github.event.pull_request.base.sha }}:$file" | yq '.version')"
+          new_version="$(yq '.version' "$file")"
+
+          echo "chart=$chart old_version=$old_version new_version=$new_version"
+
+          if [ "$old_version" == "$new_version" ]; then
+            echo "Chart.yaml changed but version is unchanged. Skipping release."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Determine the larger of the two versions using semantic version sort.
+          larger_version="$(printf '%s\n%s\n' "$old_version" "$new_version" | sort -V | tail -n1)"
+
+          if [ "$larger_version" != "$new_version" ]; then
+            echo "::error::Version was decreased: $old_version -> $new_version. Failing the workflow."
+            exit 1
+          fi
+
+          echo "Version bumped from $old_version to $new_version. Proceeding with release."
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+          echo "chart=$chart" >> "$GITHUB_OUTPUT"
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+
+  create-tag:
+    needs: check-version-bump
+    if: needs.check-version-bump.outputs.bumped == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+      - name: Create and push tag
+        run: |
+          tag="${{ needs.check-version-bump.outputs.chart }}-${{ needs.check-version-bump.outputs.version }}"
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists. Skipping creation."
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
+
+  release-scalardb-cluster:
+    needs: [check-version-bump, create-tag]
+    if: ${{ needs.check-version-bump.outputs.chart == 'scalardb-cluster' }}
+    uses: ./.github/workflows/release-scalardb-cluster.yaml
+    with:
+      version: ${{ needs.check-version-bump.outputs.version }}
+    permissions:
+      contents: write
+
+  release-scalardl:
+    needs: [check-version-bump, create-tag]
+    if: ${{ needs.check-version-bump.outputs.chart == 'scalardl' }}
+    uses: ./.github/workflows/release-scalardl.yaml
+    with:
+      version: ${{ needs.check-version-bump.outputs.version }}
+    permissions:
+      contents: write
+
+  release-scalardl-audit:
+    needs: [check-version-bump, create-tag]
+    if: ${{ needs.check-version-bump.outputs.chart == 'scalardl-audit' }}
+    uses: ./.github/workflows/release-scalardl-audit.yaml
+    with:
+      version: ${{ needs.check-version-bump.outputs.version }}
+    permissions:
+      contents: write
