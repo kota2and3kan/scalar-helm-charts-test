@@ -22,6 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Set up chart-testing
@@ -30,7 +31,7 @@ jobs:
       - name: Check if only one chart changed
         id: list-changed
         run: |
-          changed="$(ct list-changed --config .github/ci/common/ct.yaml --target-branch "${{ github.event.pull_request.base.ref }}")"
+          changed="$(ct list-changed --config .github/ci/common/ct.yaml --target-branch "${{ github.event.pull_request.base.sha }}")"
           if [[ -n "$changed" ]]; then
             num_changed="$(printf '%s\n' "$changed" | wc -l | tr -d ' ')"
             if [ "$num_changed" -gt 1 ]; then
