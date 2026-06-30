@@ -1,0 +1,10 @@
+name: CI (ScalarDB Cluster)
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Running tests for ScalarDB Cluster chart"
