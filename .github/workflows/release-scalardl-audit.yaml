@@ -1,0 +1,107 @@
+name: Release (ScalarDL Auditor)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: "scalardl-audit-${{ inputs.version }}"
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Build chart dependencies
+        run: helm dependency build charts/scalardl-audit
+
+      - name: Package standard chart
+        run: |
+          helm package charts/scalardl-audit \
+            --version "${{ inputs.version }}" \
+            --destination .
+
+      - name: Check if GitHub Release already exists
+        id: check-release
+        run: |
+          if gh release view "scalardl-audit-${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        if: steps.check-release.outputs.exists == 'false'
+        run: |
+          gh release create "scalardl-audit-${{ inputs.version }}" \
+            --title "scalardl-audit-${{ inputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload chart artifact to Release
+        run: |
+          gh release upload "scalardl-audit-${{ inputs.version }}" \
+            "./scalardl-audit-${{ inputs.version }}.tgz" \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update index.yaml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git checkout gh-pages
+
+          mkdir -p /tmp/helm-index
+          cp "./scalardl-audit-${{ inputs.version }}.tgz" /tmp/helm-index/
+          helm repo index --merge ./index.yaml \
+            --url "https://github.com/${{ github.repository }}/releases/download/scalardl-audit-${{ inputs.version }}" \
+            /tmp/helm-index/
+          cp /tmp/helm-index/index.yaml ./index.yaml
+
+      - name: Commit and push index.yaml
+        run: |
+          git add index.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to index.yaml. Skipping commit."
+          else
+            git commit -m "Update index.yaml for scalardl-audit-${{ inputs.version }}"
+            git push origin gh-pages
+          fi
+
+      - name: TODO - Run Red Hat Ecosystem Catalog verifier tool
+        run: |
+          echo "TODO: Run Red Hat Ecosystem Catalog verifier tool on Minikube to generate report.yaml"
+
+      - name: TODO - Create PR to Red Hat repository
+        run: |
+          echo "TODO: Create PR to openshift-helm-charts repository with report.yaml and scalardl-audit-red-hat-${{ inputs.version }}.tgz"
+
+      - name: TODO - Release Google Marketplace
+        run: |
+          echo "TODO: Release Google Marketplace"
+
+      - name: TODO - Release Azure Marketplace
+        run: |
+          echo "TODO: Release Azure Marketplace"
